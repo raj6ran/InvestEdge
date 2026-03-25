@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 
-const BACKEND = import.meta.env.VITE_API_URL;
+const BACKEND = import.meta.env.VITE_API_URL || "https://investedge-api.onrender.com";
+console.log("[ChartIntelligence] API URL:", BACKEND);
 
 function StockChart({ data, symbol, signals }) {
   const ref = useRef(null);

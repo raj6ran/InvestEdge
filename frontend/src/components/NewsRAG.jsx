@@ -1,6 +1,7 @@
 import { useState } from "react";
 
-const BACKEND = import.meta.env.VITE_API_URL;
+const BACKEND = import.meta.env.VITE_API_URL || "https://investedge-api.onrender.com";
+console.log("[NewsRAG] API URL:", BACKEND);
 
 const POPULAR = [
   "HDFC earnings", "Reliance AGM", "Infosys guidance",

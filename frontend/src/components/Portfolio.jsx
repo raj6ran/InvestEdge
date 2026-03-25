@@ -1,6 +1,7 @@
 import { useState } from "react";
 
-const BACKEND = import.meta.env.VITE_API_URL;
+const BACKEND = import.meta.env.VITE_API_URL || "https://investedge-api.onrender.com";
+console.log("[Portfolio] API URL:", BACKEND);
 
 const SAMPLE = `RELIANCE 50 2800
 HDFCBANK 30 1650

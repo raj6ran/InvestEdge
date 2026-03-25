@@ -4,7 +4,8 @@ import { useState, useRef, useEffect, useCallback } from "react";
 const GROQ_KEY = import.meta.env.VITE_GROQ_KEY;
 const GROQ_API = "https://api.groq.com/openai/v1/chat/completions";
 const GROQ_MODEL = "llama-3.3-70b-versatile"; // best for tool use
-const BACKEND = import.meta.env.VITE_API_URL;
+const BACKEND = import.meta.env.VITE_API_URL || "https://investedge-api.onrender.com";
+console.log("[ChatUI] API URL:", BACKEND);
 
 // ── Tools (OpenAI / Groq function-calling format) ─────────────────────────────
 const TOOLS = [

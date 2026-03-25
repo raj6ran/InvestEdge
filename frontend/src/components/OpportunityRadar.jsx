@@ -1,6 +1,7 @@
 import { useState } from "react";
 
-const BACKEND = import.meta.env.VITE_API_URL;
+const BACKEND = import.meta.env.VITE_API_URL || "https://investedge-api.onrender.com";
+console.log("[OpportunityRadar] API URL:", BACKEND);
 
 const CAT_COLORS = {
   valuation: "#f59e0b",
