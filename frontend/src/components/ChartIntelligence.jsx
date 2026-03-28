@@ -1,104 +1,138 @@
 import { useState, useRef, useEffect } from "react";
 
-const BACKEND = import.meta.env.VITE_API_URL || "https://investedge-api.onrender.com";
-console.log("[ChartIntelligence] API URL:", BACKEND);
+const BACKEND = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const QUICK = ["RELIANCE", "HDFCBANK", "INFY", "TCS", "BAJFINANCE", "SBIN", "ICICIBANK", "TATAMOTORS"];
+const PERIODS = [{ label: "3M", value: "3mo" }, { label: "6M", value: "6mo" }, { label: "1Y", value: "1y" }];
 
 function StockChart({ data, symbol, signals }) {
   const ref = useRef(null);
+
   useEffect(() => {
     if (!data?.length || !ref.current) return;
     const canvas = ref.current;
+    const dpr = window.devicePixelRatio || 1;
+    const W = canvas.offsetWidth, H = canvas.offsetHeight;
+    canvas.width = W * dpr; canvas.height = H * dpr;
     const ctx = canvas.getContext("2d");
-    const W = canvas.width, H = canvas.height;
-    const pad = { t: 32, r: 74, b: 36, l: 62 };
+    ctx.scale(dpr, dpr);
+
+    const pad = { t: 24, r: 72, b: 40, l: 16 };
     const cW = W - pad.l - pad.r, cH = H - pad.t - pad.b;
-    ctx.clearRect(0, 0, W, H);
-    ctx.fillStyle = "#080e1a"; ctx.fillRect(0, 0, W, H);
+
+    // Background
+    ctx.fillStyle = "#0f1117"; ctx.fillRect(0, 0, W, H);
+
     const prices = data.flatMap(d => [d.high, d.low]).filter(Boolean);
     const minP = Math.min(...prices) * 0.998;
     const maxP = Math.max(...prices) * 1.002;
     const xS = i => pad.l + (i / (data.length - 1)) * cW;
     const yS = p => pad.t + cH - ((p - minP) / (maxP - minP)) * cH;
-    // Grid
-    ctx.strokeStyle = "#111c2e"; ctx.lineWidth = 0.5;
+
+    // Grid lines
     for (let i = 0; i <= 5; i++) {
       const y = pad.t + (i / 5) * cH;
+      ctx.strokeStyle = "rgba(255,255,255,0.05)"; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(W - pad.r, y); ctx.stroke();
       const price = maxP - (i / 5) * (maxP - minP);
-      ctx.fillStyle = "#3d5068"; ctx.font = "9.5px JetBrains Mono, monospace";
-      ctx.fillText(`₹${price >= 1000 ? price.toFixed(0) : price.toFixed(1)}`, W - pad.r + 4, y + 3);
+      ctx.fillStyle = "#4b5563"; ctx.font = "10px 'Inter', sans-serif";
+      ctx.textAlign = "left";
+      ctx.fillText(`₹${price >= 1000 ? price.toFixed(0) : price.toFixed(1)}`, W - pad.r + 8, y + 4);
     }
+
+    // Vertical grid
+    const step = Math.floor(data.length / 6);
+    data.forEach((d, i) => {
+      if (i % step === 0) {
+        const x = xS(i);
+        ctx.strokeStyle = "rgba(255,255,255,0.04)"; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, pad.t + cH); ctx.stroke();
+        if (d.time) {
+          ctx.fillStyle = "#4b5563"; ctx.font = "10px 'Inter', sans-serif";
+          ctx.textAlign = "center";
+          ctx.fillText(d.time.slice(5), x, H - 10);
+        }
+      }
+    });
+
     // EMA lines
-    const ema20Pts = data.map((d, i) => d.ema20 ? [xS(i), yS(d.ema20)] : null).filter(Boolean);
-    const ema50Pts = data.map((d, i) => d.ema50 ? [xS(i), yS(d.ema50)] : null).filter(Boolean);
-    const drawL = (pts, col) => {
+    const drawLine = (pts, color, dash = []) => {
       if (pts.length < 2) return;
-      ctx.strokeStyle = col; ctx.lineWidth = 1.2;
+      ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.setLineDash(dash);
       ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
-      pts.slice(1).forEach(p => ctx.lineTo(p[0], p[1])); ctx.stroke();
+      pts.slice(1).forEach(p => ctx.lineTo(p[0], p[1]));
+      ctx.stroke(); ctx.setLineDash([]);
     };
-    drawL(ema20Pts, "#2196f380"); drawL(ema50Pts, "#ff980080");
+    drawLine(data.map((d, i) => d.ema20 ? [xS(i), yS(d.ema20)] : null).filter(Boolean), "#3b82f6");
+    drawLine(data.map((d, i) => d.ema50 ? [xS(i), yS(d.ema50)] : null).filter(Boolean), "#f97316");
+
     // Candles
     const cw = Math.max(2, Math.floor(cW / data.length) - 1);
     data.forEach((d, i) => {
       if (!d.open || !d.close || !d.high || !d.low) return;
       const x = xS(i);
       const up = d.close >= d.open;
-      const col = up ? "#00d4a0" : "#ff4466";
-      ctx.strokeStyle = col; ctx.lineWidth = 0.8;
+      const col = up ? "#22c55e" : "#ef4444";
+      ctx.strokeStyle = col; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(x, yS(d.high)); ctx.lineTo(x, yS(d.low)); ctx.stroke();
       const bT = yS(Math.max(d.open, d.close));
       const bH = Math.max(1, yS(Math.min(d.open, d.close)) - bT);
-      ctx.fillStyle = col; ctx.fillRect(x - cw / 2, bT, cw, bH);
+      ctx.fillStyle = up ? "#22c55e" : "#ef4444";
+      ctx.fillRect(x - cw / 2, bT, cw, bH);
     });
-    // Price line
+
+    // Last price line
     const last = data[data.length - 1];
     if (last?.close) {
       const y = yS(last.close);
-      ctx.strokeStyle = "#facc1580"; ctx.lineWidth = 0.7; ctx.setLineDash([4, 3]);
+      ctx.strokeStyle = "rgba(234,179,8,0.6)"; ctx.lineWidth = 1; ctx.setLineDash([4, 4]);
       ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(W - pad.r, y); ctx.stroke();
       ctx.setLineDash([]);
-      ctx.fillStyle = "#facc15"; ctx.font = "bold 10px JetBrains Mono, monospace";
-      ctx.fillText(`₹${last.close >= 1000 ? last.close.toFixed(0) : last.close.toFixed(1)}`, W - pad.r + 4, y + 4);
+      ctx.fillStyle = "#eab308"; ctx.font = "bold 10px 'Inter', sans-serif";
+      ctx.textAlign = "left";
+      ctx.fillText(`₹${last.close >= 1000 ? last.close.toFixed(0) : last.close.toFixed(1)}`, W - pad.r + 8, y + 4);
     }
-    // X dates
-    ctx.fillStyle = "#3d5068"; ctx.font = "9px JetBrains Mono, monospace";
-    data.forEach((d, i) => {
-      if (i % Math.floor(data.length / 6) === 0 && d.time) ctx.fillText(d.time.slice(5), xS(i) - 10, H - 8);
-    });
-    // Labels
-    ctx.fillStyle = "#e2e8f0"; ctx.font = "bold 13px JetBrains Mono, monospace";
-    ctx.fillText(symbol, pad.l + 8, 22);
-    ctx.fillStyle = "#2196f3"; ctx.font = "10px JetBrains Mono, monospace"; ctx.fillText("EMA20", pad.l + 80, 22);
-    ctx.fillStyle = "#ff9800"; ctx.fillText("EMA50", pad.l + 145, 22);
   }, [data, symbol]);
 
   const bull = signals?.filter(s => s.direction === "bullish").length || 0;
   const bear = signals?.filter(s => s.direction === "bearish").length || 0;
+
   return (
-    <div style={{ margin: "12px 0 16px", borderRadius: 12, overflow: "hidden", border: "1px solid #0f1e33" }}>
-      <canvas ref={ref} width={700} height={280} style={{ width: "100%", display: "block" }} />
+    <div style={{ borderRadius: 12, overflow: "hidden", border: "1px solid #1f2937", background: "#0f1117" }}>
+      {/* Chart legend */}
+      <div style={{ padding: "10px 16px", display: "flex", alignItems: "center", gap: 20, borderBottom: "1px solid #1f2937" }}>
+        <span style={{ fontSize: 12, fontWeight: 600, color: "#f9fafb", fontFamily: "Inter, sans-serif" }}>{symbol}</span>
+        <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "#3b82f6", fontFamily: "Inter, sans-serif" }}>
+          <span style={{ width: 16, height: 2, background: "#3b82f6", display: "inline-block", borderRadius: 1 }} /> EMA 20
+        </span>
+        <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "#f97316", fontFamily: "Inter, sans-serif" }}>
+          <span style={{ width: 16, height: 2, background: "#f97316", display: "inline-block", borderRadius: 1 }} /> EMA 50
+        </span>
+        <span style={{ marginLeft: "auto", fontSize: 11, color: "#6b7280", fontFamily: "Inter, sans-serif" }}>
+          <span style={{ color: "#22c55e" }}>▲ {bull} bullish</span>
+          <span style={{ margin: "0 8px", color: "#374151" }}>·</span>
+          <span style={{ color: "#ef4444" }}>▼ {bear} bearish</span>
+        </span>
+      </div>
+      <canvas ref={ref} style={{ width: "100%", height: 320, display: "block" }} />
+      {/* Signal pills */}
       {signals?.length > 0 && (
-        <div style={{ background: "#080e1a", padding: "10px 12px", display: "flex", flexWrap: "wrap", gap: 5 }}>
+        <div style={{ padding: "10px 14px", display: "flex", flexWrap: "wrap", gap: 6, borderTop: "1px solid #1f2937" }}>
           {signals.map((s, i) => (
             <span key={i} style={{
-              fontSize: 10.5, padding: "2px 8px", borderRadius: 4,
-              fontFamily: "JetBrains Mono, monospace",
-              background: s.direction === "bullish" ? "#001f12" : s.direction === "bearish" ? "#1f0010" : "#111827",
-              color: s.direction === "bullish" ? "#00d4a0" : s.direction === "bearish" ? "#ff4466" : "#64748b",
-              border: `1px solid ${s.direction === "bullish" ? "#00d4a020" : s.direction === "bearish" ? "#ff446620" : "#ffffff0d"}`,
+              fontSize: 10, padding: "3px 9px", borderRadius: 4,
+              fontFamily: "Inter, sans-serif", fontWeight: 500,
+              background: s.direction === "bullish" ? "rgba(34,197,94,0.12)" : s.direction === "bearish" ? "rgba(239,68,68,0.12)" : "rgba(107,114,128,0.12)",
+              color: s.direction === "bullish" ? "#22c55e" : s.direction === "bearish" ? "#ef4444" : "#9ca3af",
+              border: `1px solid ${s.direction === "bullish" ? "rgba(34,197,94,0.25)" : s.direction === "bearish" ? "rgba(239,68,68,0.25)" : "rgba(107,114,128,0.2)"}`,
             }}>{s.type}</span>
           ))}
-          <span style={{ marginLeft: "auto", fontSize: 10.5, color: "#475569", fontFamily: "monospace" }}>
-            🟢 {bull} &nbsp; 🔴 {bear}
-          </span>
         </div>
       )}
     </div>
   );
 }
 
-const PERIODS = ["3mo", "6mo", "1y"];
+const c = (n) => `var(${n})`;
 
 export default function ChartIntelligence() {
   const [symbol, setSymbol] = useState("");
@@ -107,15 +141,15 @@ export default function ChartIntelligence() {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
 
-  async function analyze() {
-    const s = symbol.trim().toUpperCase();
+  async function analyze(sym = symbol, per = period) {
+    const s = sym.trim().toUpperCase();
     if (!s) return;
     setLoading(true); setError(null); setData(null);
     try {
       const res = await fetch(`${BACKEND}/api/patterns`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ symbol: s, period }),
+        body: JSON.stringify({ symbol: s, period: per }),
       });
       if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
       setData(await res.json());
@@ -123,205 +157,279 @@ export default function ChartIntelligence() {
     finally { setLoading(false); }
   }
 
-  const quickSuggestions = ["RELIANCE", "HDFCBANK", "INFY", "TCS", "BAJFINANCE", "SBIN", "ICICIBANK"];
   const price = data?.price;
+  const biasColor = data?.bias === "bullish" ? "#22c55e" : data?.bias === "bearish" ? "#ef4444" : "#9ca3af";
 
   return (
-    <div style={{ height: "100%", overflowY: "auto", padding: "28px 32px" }}>
-      {/* Header */}
-      <div className="section-header">
-        <div className="section-icon" style={{ background: "#071830", border: "1px solid #3b82f630" }}>📊</div>
-        <div>
-          <div className="section-title">Chart Intelligence</div>
-          <div className="section-sub">The Analyst — Technical Patterns & Indicators</div>
+    <div style={{ height: "100%", overflowY: "auto", background: c("--bg-base") }}>
+      {/* Top bar */}
+      <div style={{ background: c("--bg-elevated"), borderBottom: `1px solid ${c("--border")}`, padding: "16px 32px", display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={{ flex: 1, position: "relative", maxWidth: 480 }}>
+          <svg style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <input
+            value={symbol}
+            onChange={e => setSymbol(e.target.value.toUpperCase())}
+            onKeyDown={e => e.key === "Enter" && analyze()}
+            placeholder="Search symbol — RELIANCE, TCS, HDFCBANK..."
+            style={{ width: "100%", padding: "10px 14px 10px 38px", borderRadius: 8, border: `1px solid ${c("--border")}`, background: c("--bg-base"), color: c("--text-primary"), fontSize: 14, fontFamily: "Inter, sans-serif", outline: "none" }}
+          />
         </div>
-      </div>
-
-      <div style={{
-        padding: "14px 16px", background: "#080e1a",
-        border: "1px solid #0f1e33", borderRadius: 10, marginBottom: 24,
-        fontSize: 13, color: "#64748b", lineHeight: 1.6,
-      }}>
-        Computer vision on live NSE/BSE charts. Detects:
-        <span style={{ color: "#3b82f6" }}> RSI · MACD · EMA Crossovers · Bollinger Bands · Volume Surges · 52-Week Levels · Historical Backtesting</span>
-      </div>
-
-      {/* Controls */}
-      <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
-        <input
-          className="input"
-          value={symbol}
-          onChange={e => setSymbol(e.target.value.toUpperCase())}
-          onKeyDown={e => e.key === "Enter" && analyze()}
-          placeholder="Stock symbol… RELIANCE, TCS, NIFTY50"
-          style={{ flex: 1, fontFamily: "JetBrains Mono, monospace" }}
-        />
-        <div style={{ display: "flex", gap: 4 }}>
+        {/* Period selector */}
+        <div style={{ display: "flex", background: c("--bg-surface"), borderRadius: 8, padding: 3, gap: 2 }}>
           {PERIODS.map(p => (
-            <button key={p} onClick={() => setPeriod(p)} style={{
-              padding: "8px 14px", borderRadius: 8, border: "none", cursor: "pointer",
-              background: period === p ? "linear-gradient(135deg,#1d4ed8,#3b82f6)" : "#0a1220",
-              color: period === p ? "#fff" : "#475569",
-              fontSize: 11.5, fontFamily: "JetBrains Mono, monospace",
-              border: period === p ? "none" : "1px solid #0f1e33",
+            <button key={p.value} onClick={() => { setPeriod(p.value); if (symbol.trim()) analyze(symbol, p.value); }} style={{
+              padding: "6px 14px", borderRadius: 6, border: "none", cursor: "pointer",
+              background: period === p.value ? c("--bg-elevated") : "transparent",
+              color: period === p.value ? c("--text-primary") : c("--text-muted"),
+              fontSize: 13, fontWeight: period === p.value ? 600 : 400,
+              fontFamily: "Inter, sans-serif",
+              boxShadow: period === p.value ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
               transition: "all 0.15s",
-            }}>{p}</button>
+            }}>{p.label}</button>
           ))}
         </div>
         <button
-          className="btn btn-primary"
-          onClick={analyze}
+          onClick={() => analyze()}
           disabled={!symbol.trim() || loading}
-          style={{ minWidth: 130, background: "linear-gradient(135deg,#1d4ed8,#3b82f6)" }}
+          style={{
+            padding: "10px 24px", borderRadius: 8, border: "none",
+            background: symbol.trim() && !loading ? "#047857" : "#e5e7eb",
+            color: "#ffffff", fontSize: 14, fontWeight: 600,
+            cursor: symbol.trim() && !loading ? "pointer" : "not-allowed",
+            fontFamily: "Inter, sans-serif", display: "flex", alignItems: "center", gap: 8,
+            transition: "background 0.15s",
+          }}
         >
-          {loading ? "Analyzing…" : "📊 Analyze"}
+          {loading ? (
+            <>
+              <svg style={{ animation: "spin 0.8s linear infinite" }} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+              Analyzing
+            </>
+          ) : (
+            <>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+              Analyze
+            </>
+          )}
         </button>
       </div>
 
-      {/* Suggestions */}
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 28 }}>
-        {quickSuggestions.map(s => (
-          <button key={s} onClick={() => setSymbol(s)} style={{
-            padding: "4px 11px", borderRadius: 6,
-            border: "1px solid #0f1e33", background: "#080e1a",
-            color: "#475569", fontSize: 11, cursor: "pointer",
-            fontFamily: "JetBrains Mono, monospace", transition: "all 0.15s",
-          }}
-            onMouseEnter={e => { e.target.style.borderColor = "#3b82f6"; e.target.style.color = "#3b82f6"; }}
-            onMouseLeave={e => { e.target.style.borderColor = "#0f1e33"; e.target.style.color = "#475569"; }}
-          >{s}</button>
-        ))}
-      </div>
-
-      {/* Loading */}
-      {loading && (
-        <div style={{ textAlign: "center", padding: 40 }}>
-          <div style={{ width: 36, height: 36, border: "3px solid #0f1e33",
-            borderTopColor: "#3b82f6", borderRadius: "50%",
-            animation: "spin 0.8s linear infinite", margin: "0 auto 16px" }} />
-          <div style={{ color: "#475569", fontFamily: "JetBrains Mono, monospace", fontSize: 13 }}>
-            Running technical analysis on {symbol}…
-          </div>
+      <div style={{ padding: "24px 32px" }}>
+        {/* Quick suggestions */}
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 24 }}>
+          {QUICK.map(s => (
+            <button key={s} onClick={() => { setSymbol(s); analyze(s, period); }} style={{
+              padding: "5px 12px", borderRadius: 6, border: `1px solid ${c("--border")}`,
+              background: c("--bg-elevated"), color: c("--text-secondary"), fontSize: 12, fontWeight: 500,
+              cursor: "pointer", fontFamily: "Inter, sans-serif", transition: "all 0.15s",
+            }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = "#047857"; e.currentTarget.style.color = "#047857"; }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = ""; e.currentTarget.style.color = ""; }}
+            >{s}</button>
+          ))}
         </div>
-      )}
 
-      {/* Error */}
-      {error && (
-        <div style={{ padding: "14px 18px", background: "#1f0010",
-          border: "1px solid #ff446640", borderRadius: 10,
-          color: "#ff7a9a", fontSize: 13, fontFamily: "JetBrains Mono, monospace" }}>
-          ⚠️ {error}
-        </div>
-      )}
-
-      {/* Results */}
-      {data && (
-        <div style={{ animation: "fadeUp 0.4s ease" }}>
-          {/* Price row */}
-          <div style={{
-            display: "flex", alignItems: "center", justifyContent: "space-between",
-            marginBottom: 16, flexWrap: "wrap", gap: 12,
-          }}>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
-              <span style={{ fontSize: 28, fontWeight: 700, color: "#e2e8f0",
-                fontFamily: "JetBrains Mono, monospace" }}>
-                ₹{price?.current?.toLocaleString("en-IN")}
-              </span>
-              {price?.change_pct != null && (
-                <span style={{
-                  fontSize: 14, fontWeight: 600,
-                  color: price.change_pct >= 0 ? "#00d4a0" : "#ff4466",
-                  fontFamily: "JetBrains Mono, monospace",
-                }}>
-                  {price.change_pct >= 0 ? "▲" : "▼"} {Math.abs(price.change_pct)}%
-                </span>
-              )}
+        {/* Empty state */}
+        {!data && !loading && !error && (
+          <div style={{ background: c("--bg-elevated"), borderRadius: 16, border: `1px solid ${c("--border")}`, padding: "80px 40px", textAlign: "center" }}>
+            <div style={{ width: 64, height: 64, borderRadius: 16, background: "rgba(4,120,87,0.1)", border: "1px solid rgba(4,120,87,0.2)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px" }}>
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#047857" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
             </div>
-            <div style={{
-              padding: "6px 16px", borderRadius: 8,
-              background: data.bias === "bullish" ? "#001f12" : data.bias === "bearish" ? "#1f0010" : "#0a1220",
-              border: `1px solid ${data.bias === "bullish" ? "#00d4a040" : data.bias === "bearish" ? "#ff446640" : "#0f1e33"}`,
-              color: data.bias === "bullish" ? "#00d4a0" : data.bias === "bearish" ? "#ff4466" : "#94a3b8",
-              fontSize: 13, fontWeight: 700, fontFamily: "JetBrains Mono, monospace",
-            }}>
-              {data.bias === "bullish" ? "🟢" : data.bias === "bearish" ? "🔴" : "⚪"} {data.bias?.toUpperCase()} BIAS
-              <span style={{ fontSize: 10, marginLeft: 8, opacity: 0.7 }}>
-                ({data.bias_counts?.bullish}B · {data.bias_counts?.bearish}Be)
-              </span>
-            </div>
+            <h2 style={{ fontSize: 22, fontWeight: 600, color: c("--text-primary"), fontFamily: "Inter, sans-serif", marginBottom: 8 }}>Chart Intelligence</h2>
+            <p style={{ fontSize: 14, color: c("--text-secondary"), fontFamily: "Inter, sans-serif", maxWidth: 400, margin: "0 auto" }}>
+              Enter any NSE/BSE symbol to run technical analysis — RSI, MACD, EMA crossovers, Bollinger Bands, volume signals and more.
+            </p>
           </div>
+        )}
 
-          {/* Chart */}
-          {data.chart_data?.length > 0 && (
-            <StockChart data={data.chart_data} symbol={data.display} signals={data.signals} />
-          )}
-
-          {/* Key metrics */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))", gap: 9, marginBottom: 20 }}>
-            {[
-              { label: "RSI(14)", value: price?.rsi?.toFixed(1), color: price?.rsi < 35 ? "#00d4a0" : price?.rsi > 65 ? "#ff4466" : "#e2e8f0" },
-              { label: "EMA 20", value: price?.ema20 ? `₹${price.ema20.toFixed(0)}` : null, color: "#2196f3" },
-              { label: "EMA 50", value: price?.ema50 ? `₹${price.ema50.toFixed(0)}` : null, color: "#ff9800" },
-              { label: "EMA 200", value: price?.ema200 ? `₹${price.ema200.toFixed(0)}` : null, color: "#94a3b8" },
-              { label: "52W High", value: price?.["52w_high"] ? `₹${price["52w_high"].toFixed(0)}` : null, color: "#00d4a0" },
-              { label: "52W Low", value: price?.["52w_low"] ? `₹${price["52w_low"].toFixed(0)}` : null, color: "#ff4466" },
-              { label: "ATR", value: price?.atr?.toFixed(1), color: "#f59e0b" },
-            ].filter(m => m.value).map(m => (
-              <div key={m.label} style={{
-                padding: "10px 12px", background: "#0a1220",
-                border: "1px solid #0f1e33", borderRadius: 8, textAlign: "center",
-              }}>
-                <div style={{ fontSize: 9.5, color: "#334155", marginBottom: 4,
-                  fontFamily: "JetBrains Mono, monospace", textTransform: "uppercase" }}>{m.label}</div>
-                <div style={{ fontSize: 14, fontWeight: 700, color: m.color,
-                  fontFamily: "JetBrains Mono, monospace" }}>{m.value}</div>
-              </div>
-            ))}
+        {/* Loading */}
+        {loading && (
+          <div style={{ background: c("--bg-elevated"), borderRadius: 16, border: `1px solid ${c("--border")}`, padding: 60, textAlign: "center" }}>
+            <div style={{ width: 40, height: 40, border: `3px solid ${c("--border")}`, borderTopColor: "#047857", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 16px" }} />
+            <div style={{ fontSize: 14, color: c("--text-secondary"), fontFamily: "Inter, sans-serif" }}>Running technical analysis on {symbol}...</div>
           </div>
+        )}
 
-          {/* Signal cards */}
-          <div style={{ marginBottom: 20 }}>
-            <div style={{ fontSize: 11, color: "#475569", fontFamily: "JetBrains Mono, monospace",
-              letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 12 }}>
-              Detected Signals ({data.signals?.length || 0})
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              {data.signals?.map((s, i) => (
-                <div key={i} className={`signal-card ${s.direction === "bullish" ? "bull" : s.direction === "bearish" ? "bear" : "neu"}`}>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
-                    <span style={{ fontSize: 12, fontWeight: 600, fontFamily: "JetBrains Mono, monospace",
-                      color: s.direction === "bullish" ? "#00d4a0" : s.direction === "bearish" ? "#ff4466" : "#94a3b8" }}>
-                      {s.type}
+        {/* Error */}
+        {error && (
+          <div style={{ padding: "14px 18px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, color: "#dc2626", fontSize: 13, fontFamily: "Inter, sans-serif" }}>
+            {error}
+          </div>
+        )}
+
+        {data && (
+          <div>
+            {/* Price header */}
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 20, flexWrap: "wrap", gap: 16 }}>
+              <div>
+                <div style={{ fontSize: 13, color: c("--text-secondary"), fontFamily: "Inter, sans-serif", marginBottom: 4 }}>{data.display} · NSE</div>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+                  <span style={{ fontSize: 36, fontWeight: 700, color: c("--text-primary"), fontFamily: "Inter, sans-serif", letterSpacing: "-0.02em" }}>
+                    ₹{price?.current?.toLocaleString("en-IN")}
+                  </span>
+                  {price?.change_pct != null && (
+                    <span style={{ fontSize: 16, fontWeight: 600, color: price.change_pct >= 0 ? "#16a34a" : "#dc2626", fontFamily: "Inter, sans-serif" }}>
+                      {price.change_pct >= 0 ? "▲" : "▼"} {Math.abs(price.change_pct)}%
                     </span>
-                    <span style={{
-                      fontSize: 9.5, padding: "1px 7px", borderRadius: 4,
-                      background: s.strength === "strong" ? "#2d1b69" : "#0a1220",
-                      color: s.strength === "strong" ? "#a78bfa" : "#475569",
-                      fontFamily: "JetBrains Mono, monospace",
-                    }}>{s.strength}</span>
+                  )}
+                </div>
+                <div style={{ fontSize: 12, color: c("--text-muted"), fontFamily: "Inter, sans-serif", marginTop: 4 }}>
+                  O: ₹{price?.open} &nbsp;·&nbsp; H: ₹{price?.high} &nbsp;·&nbsp; L: ₹{price?.low}
+                </div>
+              </div>
+              {/* Bias badge */}
+              <div style={{
+                padding: "10px 20px", borderRadius: 10,
+                background: data.bias === "bullish" ? "rgba(22,163,74,0.08)" : data.bias === "bearish" ? "rgba(239,68,68,0.08)" : c("--bg-elevated"),
+                border: `1px solid ${data.bias === "bullish" ? "rgba(22,163,74,0.25)" : data.bias === "bearish" ? "rgba(239,68,68,0.25)" : c("--border")}`,
+                textAlign: "center",
+              }}>
+                <div style={{ fontSize: 11, color: c("--text-muted"), fontFamily: "Inter, sans-serif", marginBottom: 4, letterSpacing: "0.05em" }}>OVERALL BIAS</div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: biasColor, fontFamily: "Inter, sans-serif", textTransform: "uppercase" }}>{data.bias}</div>
+                <div style={{ fontSize: 11, color: c("--text-muted"), fontFamily: "Inter, sans-serif", marginTop: 2 }}>
+                  {data.bias_counts?.bullish}↑ · {data.bias_counts?.bearish}↓
+                </div>
+              </div>
+            </div>
+
+            {/* Chart */}
+            {data.chart_data?.length > 0 && (
+              <div style={{ marginBottom: 24 }}>
+                <StockChart data={data.chart_data} symbol={data.display} signals={data.signals} />
+              </div>
+            )}
+
+            {/* Metrics strip */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 12, marginBottom: 28 }}>
+              {[
+                {
+                  label: "RELATIVE STRENGTH", icon: "↗", iconColor: "#16a34a",
+                  value: price?.rsi?.toFixed(1),
+                  sub: price?.rsi < 35 ? "Oversold (30)" : price?.rsi > 65 ? "Overbought (70)" : "Neutral Zone",
+                  subColor: price?.rsi < 35 ? "#16a34a" : price?.rsi > 65 ? "#ef4444" : "#6b7280",
+                  bar: price?.rsi ? price.rsi / 100 : null, barColor: price?.rsi < 35 ? "#16a34a" : price?.rsi > 65 ? "#ef4444" : "#047857",
+                },
+                {
+                  label: "EMA 200 CROSS", icon: "✓", iconColor: price?.current && price?.ema200 ? (price.current > price.ema200 ? "#16a34a" : "#ef4444") : "#6b7280",
+                  value: price?.ema200 ? `₹${price.ema200.toFixed(0)}` : null,
+                  sub: price?.current && price?.ema200 ? (price.current > price.ema200 ? "Price above long-term" : "Price below long-term") : "",
+                  subColor: price?.current && price?.ema200 ? (price.current > price.ema200 ? "#16a34a" : "#ef4444") : "#6b7280",
+                  bar: null,
+                },
+                {
+                  label: "MACD DIVERGENCE", icon: "⚡", iconColor: "#3b82f6",
+                  value: price?.ema20 && price?.ema50 ? Math.abs(price.ema20 - price.ema50).toFixed(1) : null,
+                  sub: price?.ema20 && price?.ema50 ? (price.ema20 > price.ema50 ? "Positive Arc" : "Negative Arc") : "",
+                  subColor: price?.ema20 && price?.ema50 ? (price.ema20 > price.ema50 ? "#16a34a" : "#ef4444") : "#6b7280",
+                  bar: null,
+                },
+                {
+                  label: "VOLATILITY BANDS", icon: "↕", iconColor: "#d97706",
+                  value: price?.atr ? `${((price.atr / price.current) * 100).toFixed(1)}%` : null,
+                  sub: price?.atr && price.current ? (price.atr / price.current > 0.025 ? "Squeeze Imminent" : price.atr / price.current > 0.015 ? "Moderate Range" : "Tight Range") : "",
+                  subColor: "#d97706",
+                  bar: price?.atr && price?.current ? Math.min(1, (price.atr / price.current) / 0.04) : null,
+                  barColor: "#d97706",
+                },
+                {
+                  label: "52W HIGH", icon: "▲", iconColor: "#16a34a",
+                  value: price?.["52w_high"] ? `₹${price["52w_high"].toFixed(0)}` : null,
+                  sub: price?.current && price?.["52w_high"] ? `${(((price["52w_high"] - price.current) / price["52w_high"]) * 100).toFixed(1)}% from top` : "",
+                  subColor: "#6b7280", bar: null,
+                },
+                {
+                  label: "52W LOW", icon: "▼", iconColor: "#ef4444",
+                  value: price?.["52w_low"] ? `₹${price["52w_low"].toFixed(0)}` : null,
+                  sub: price?.current && price?.["52w_low"] ? `${(((price.current - price["52w_low"]) / price["52w_low"]) * 100).toFixed(1)}% above base` : "",
+                  subColor: "#6b7280", bar: null,
+                },
+              ].filter(m => m.value).map((m, i) => (
+                <div key={i} style={{
+                  padding: "16px", background: c("--bg-elevated"),
+                  border: `1px solid ${c("--border")}`, borderRadius: 12,
+                  display: "flex", flexDirection: "column", gap: 4,
+                }}>
+                  {/* Label + icon row */}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                    <span style={{ fontSize: 10, color: c("--text-muted"), fontFamily: "Inter, sans-serif", fontWeight: 500, letterSpacing: "0.06em" }}>{m.label}</span>
+                    <span style={{ fontSize: 13, color: m.iconColor, fontWeight: 700 }}>{m.icon}</span>
                   </div>
-                  <div style={{ fontSize: 11.5, color: "#64748b", lineHeight: 1.5 }}>{s.detail}</div>
+                  {/* Value */}
+                  <div style={{ fontSize: 22, fontWeight: 700, color: c("--text-primary"), fontFamily: "Inter, sans-serif", lineHeight: 1.1 }}>
+                    {m.value}
+                    {m.label === "RELATIVE STRENGTH" && (
+                      <span style={{ fontSize: 12, fontWeight: 500, color: m.subColor, marginLeft: 6 }}>{m.sub}</span>
+                    )}
+                  </div>
+                  {/* Sub text */}
+                  {m.label !== "RELATIVE STRENGTH" && (
+                    <div style={{ fontSize: 11, color: m.subColor, fontFamily: "Inter, sans-serif", fontWeight: 500 }}>{m.sub}</div>
+                  )}
+                  {/* Progress bar */}
+                  {m.bar != null && (
+                    <div style={{ marginTop: 8, height: 3, background: c("--border"), borderRadius: 2, overflow: "hidden" }}>
+                      <div style={{ width: `${Math.round(m.bar * 100)}%`, height: "100%", background: m.barColor, borderRadius: 2, transition: "width 0.6s ease" }} />
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
-          </div>
 
-          {/* Backtest */}
-          {data.backtest && (
-            <div style={{
-              padding: "14px 18px", background: "#0c0f1a",
-              border: "1px solid #a78bfa30", borderRadius: 10,
-            }}>
-              <div style={{ fontSize: 10, color: "#6d28d9", fontFamily: "JetBrains Mono, monospace",
-                letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 6 }}>
-                Backtest Result
+            {/* Signals */}
+            {data.signals?.length > 0 && (
+              <div style={{ marginBottom: 24 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: c("--text-primary"), fontFamily: "Inter, sans-serif" }}>
+                    Detected Signals
+                    <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, color: "#ffffff", background: "#047857", borderRadius: 20, padding: "2px 8px" }}>{data.signals.length}</span>
+                  </div>
+                  <div style={{ display: "flex", gap: 12, fontSize: 12, fontFamily: "Inter, sans-serif" }}>
+                    <span style={{ color: "#16a34a", fontWeight: 500 }}>▲ {data.bias_counts?.bullish} Bullish</span>
+                    <span style={{ color: "#9ca3af" }}>·</span>
+                    <span style={{ color: "#ef4444", fontWeight: 500 }}>▼ {data.bias_counts?.bearish} Bearish</span>
+                  </div>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  {data.signals.map((s, i) => {
+                    const isBull = s.direction === "bullish";
+                    const isBear = s.direction === "bearish";
+                    const accentColor = isBull ? "#16a34a" : isBear ? "#ef4444" : "#9ca3af";
+                    const strengthBg = s.strength === "strong" ? "#ede9fe" : s.strength === "moderate" ? "#dbeafe" : "#f3f4f6";
+                    const strengthColor = s.strength === "strong" ? "#7c3aed" : s.strength === "moderate" ? "#1d4ed8" : "#6b7280";
+                    return (
+                      <div key={i} style={{
+                        background: c("--bg-elevated"), border: `1px solid ${c("--border")}`,
+                        borderRadius: 12, padding: "14px 16px",
+                        borderLeft: `3px solid ${accentColor}`,
+                        display: "flex", flexDirection: "column", gap: 8,
+                      }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                          <span style={{ fontSize: 12, fontWeight: 700, fontFamily: "Inter, sans-serif", color: accentColor, letterSpacing: "0.02em" }}>{s.type.toUpperCase()}</span>
+                          <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 20, fontFamily: "Inter, sans-serif", fontWeight: 600, background: strengthBg, color: strengthColor }}>{s.strength}</span>
+                        </div>
+                        <div style={{ fontSize: 12, color: c("--text-secondary"), fontFamily: "Inter, sans-serif", lineHeight: 1.6 }}>{s.detail}</div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-              <div style={{ fontSize: 12.5, color: "#94a3b8", fontFamily: "JetBrains Mono, monospace",
-                lineHeight: 1.6 }}>{data.backtest}</div>
-            </div>
-          )}
-        </div>
-      )}
+            )}
+
+            {/* Backtest */}
+            {data.backtest && (
+              <div style={{ background: c("--bg-elevated"), border: `1px solid ${c("--border")}`, borderRadius: 12, overflow: "hidden", marginBottom: 8 }}>
+                <div style={{ padding: "10px 16px", background: "rgba(124,58,237,0.08)", borderBottom: `1px solid rgba(124,58,237,0.2)`, display: "flex", alignItems: "center", gap: 8 }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "#7c3aed", fontFamily: "Inter, sans-serif", letterSpacing: "0.06em", textTransform: "uppercase" }}>Backtest Result</span>
+                </div>
+                <div style={{ padding: "14px 16px", fontSize: 13, color: c("--text-secondary"), fontFamily: "Inter, sans-serif", lineHeight: 1.7 }}>{data.backtest}</div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>

@@ -1,35 +1,54 @@
-import { useState } from "react";
+import { useState, useContext } from "react";
+import { ThemeContext } from "../App";
 
-const BACKEND = import.meta.env.VITE_API_URL || "https://investedge-api.onrender.com";
-console.log("[Portfolio] API URL:", BACKEND);
+const BACKEND = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const c = (n) => `var(${n})`;
 
-const SAMPLE = `RELIANCE 50 2800
-HDFCBANK 30 1650
-INFY 100 1420
-TCS 20 3800`;
+const SAMPLE = `RELIANCE 50 2800\nHDFCBANK 30 1650\nINFY 100 1420\nTCS 20 3800`;
+
+const Icon = ({ d, size = 16, stroke = "currentColor", strokeWidth = 1.75 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
+    <path d={d} />
+  </svg>
+);
+
+const ICONS = {
+  wallet:   "M21 12V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-2M16 12h5M16 12a2 2 0 1 0 4 0 2 2 0 0 0-4 0z",
+  trending: "M23 6l-9.5 9.5-5-5L1 18M17 6h6v6",
+  pnl:      "M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6",
+  chart:    "M18 20V10M12 20V4M6 20v-6",
+  health:   "M22 12h-4l-3 9L9 3l-3 9H2",
+  robot:    "M12 2a2 2 0 0 1 2 2v1h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2V4a2 2 0 0 1 2-2zM9 12h6M9 16h4",
+  check:    "M20 6L9 17l-5-5",
+  back:     "M19 12H5M12 5l-7 7 7 7",
+  briefcase:"M20 7H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2zM16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2",
+  warn:     "M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4M12 17h.01",
+  sample:   "M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 0 2-2h2a2 2 0 0 0 2 2",
+};
 
 function parseHoldings(raw) {
-  const lines = raw.trim().split("\n");
-  const holdings = [];
-  for (const line of lines) {
-    // Support: "RELIANCE 50 2800" or "RELIANCE — 50 shares at ₹2800"
-    const m1 = line.match(/([A-Z]+)\s+(\d+(?:\.\d+)?)\s+[\u20b9₹]?(\d+(?:\.\d+)?)/i);
-    const m2 = line.match(/([A-Z]+)[^0-9]*(\d+(?:\.\d+)?)[^0-9]*[\u20b9₹]?(\d+(?:\.\d+)?)/i);
-    const m = m1 || m2;
-    if (m) holdings.push({ symbol: m[1].toUpperCase(), qty: parseFloat(m[2]), avg_cost: parseFloat(m[3]) });
-  }
-  return holdings;
+  return raw.trim().split("\n").reduce((acc, line) => {
+    const m = line.match(/([A-Z]+)\s+(\d+(?:\.\d+)?)\s+[₹]?(\d+(?:\.\d+)?)/i);
+    if (m) acc.push({ symbol: m[1].toUpperCase(), qty: parseFloat(m[2]), avg_cost: parseFloat(m[3]) });
+    return acc;
+  }, []);
 }
 
-function PnlBar({ pct }) {
-  const pos = pct >= 0;
+function ScoreRing({ score, grade }) {
+  const color = score >= 85 ? "#16a34a" : score >= 70 ? "#d97706" : score >= 55 ? "#ea580c" : "#ef4444";
+  const r = 44, circ = 2 * Math.PI * r;
+  const dash = (score / 100) * circ;
   return (
-    <div style={{ height: 6, background: "#0a1220", borderRadius: 3, overflow: "hidden", marginTop: 6 }}>
-      <div style={{
-        height: "100%", width: `${Math.min(Math.abs(pct) * 2, 100)}%`,
-        background: pos ? "linear-gradient(90deg,#059669,#00d4a0)" : "linear-gradient(90deg,#dc2626,#ff4466)",
-        borderRadius: 3, transition: "width 0.6s ease",
-      }} />
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+      <svg width="110" height="110" viewBox="0 0 110 110">
+        <circle cx="55" cy="55" r={r} fill="none" stroke={c("--border")} strokeWidth="9" />
+        <circle cx="55" cy="55" r={r} fill="none" stroke={color} strokeWidth="9"
+          strokeDasharray={`${dash} ${circ}`} strokeDashoffset={circ / 4}
+          strokeLinecap="round" style={{ transition: "stroke-dasharray 1s ease" }} />
+        <text x="55" y="50" textAnchor="middle" fill={color} fontSize="22" fontWeight="700" fontFamily="Inter">{score}</text>
+        <text x="55" y="67" textAnchor="middle" fill="var(--text-muted)" fontSize="11" fontFamily="Inter">/ 100</text>
+      </svg>
+      <div style={{ fontSize: 16, fontWeight: 700, color, marginTop: 4 }}>Grade {grade}</div>
     </div>
   );
 }
@@ -37,21 +56,31 @@ function PnlBar({ pct }) {
 export default function Portfolio() {
   const [raw, setRaw] = useState(SAMPLE);
   const [loading, setLoading] = useState(false);
-  const [data, setData] = useState(null);
+  const [data, setData] = useState(null);       // /api/portfolio response
+  const [doctor, setDoctor] = useState(null);   // /api/portfolio/doctor response
   const [error, setError] = useState(null);
+  useContext(ThemeContext);
 
   async function analyze() {
     const holdings = parseHoldings(raw);
-    if (!holdings.length) { setError("Could not parse any holdings. Format: SYMBOL QTY AVGPRICE"); return; }
-    setLoading(true); setError(null); setData(null);
+    if (!holdings.length) { setError("Could not parse holdings. Format: SYMBOL QTY AVGPRICE"); return; }
+    setLoading(true); setError(null); setData(null); setDoctor(null);
     try {
-      const res = await fetch(`${BACKEND}/api/portfolio`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ holdings }),
-      });
-      if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
-      setData(await res.json());
+      const [res1, res2] = await Promise.all([
+        fetch(`${BACKEND}/api/portfolio`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ holdings }),
+        }),
+        fetch(`${BACKEND}/api/portfolio/doctor`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ holdings }),
+        }),
+      ]);
+      if (!res1.ok) throw new Error((await res1.json()).detail || `HTTP ${res1.status}`);
+      if (!res2.ok) throw new Error((await res2.json()).detail || `HTTP ${res2.status}`);
+      const [d1, d2] = await Promise.all([res1.json(), res2.json()]);
+      setData(d1);
+      setDoctor(d2);
     } catch (e) { setError(e.message); }
     finally { setLoading(false); }
   }
@@ -59,211 +88,197 @@ export default function Portfolio() {
   const summary = data?.summary;
   const inProfit = summary && summary.total_pnl >= 0;
 
-  const signalColor = sig => ({
-    accumulate: "#00d4a0",
-    hold:       "#3b82f6",
-    review:     "#f97316",
-  }[sig] || "#94a3b8");
-
   return (
-    <div style={{ height: "100%", overflowY: "auto", padding: "28px 32px" }}>
-      <div className="section-header">
-        <div className="section-icon" style={{ background: "#071a0a", border: "1px solid #00d4a030" }}>💼</div>
-        <div>
-          <div className="section-title">Portfolio Analyzer</div>
-          <div className="section-sub">P&L · Risk · Per-Holding Signals</div>
-        </div>
+    <div style={{ height: "100%", overflowY: "auto", padding: "28px 32px", background: c("--bg-base") }}>
+      {/* Header */}
+      <div style={{ marginBottom: 28 }}>
+        <h1 style={{ fontSize: 26, fontWeight: 700, color: c("--text-primary"), marginBottom: 6 }}>Portfolio Analyzer</h1>
+        <p style={{ fontSize: 13, color: c("--text-secondary") }}>P&L · Risk · Signals · AI Health Diagnosis</p>
       </div>
 
       {/* Input */}
-      <div style={{ marginBottom: 20 }}>
-        <div style={{ fontSize: 11, color: "#334155", fontFamily: "JetBrains Mono, monospace",
-          marginBottom: 8, letterSpacing: "0.06em" }}>
-          FORMAT: SYMBOL&nbsp;&nbsp;QUANTITY&nbsp;&nbsp;AVG_PRICE &nbsp;(one per line)
-        </div>
-        <textarea
-          value={raw}
-          onChange={e => setRaw(e.target.value)}
-          rows={6}
-          placeholder={"RELIANCE 50 2800\nHDFCBANK 30 1650\nINFY 100 1420"}
-          style={{
-            width: "100%", background: "#0a1220",
-            border: "1px solid #0f1e33", borderRadius: 10,
-            color: "#94a3b8", fontSize: 13, padding: "14px 16px",
-            fontFamily: "JetBrains Mono, monospace", lineHeight: 1.8,
-            outline: "none", resize: "vertical",
-            transition: "border-color 0.2s",
-          }}
-          onFocus={e => e.target.style.borderColor = "#00d4a0"}
-          onBlur={e => e.target.style.borderColor = "#0f1e33"}
-        />
-      </div>
-
-      <div style={{ display: "flex", gap: 10, marginBottom: 28 }}>
-        <button
-          className="btn btn-primary"
-          onClick={analyze}
-          disabled={!raw.trim() || loading}
-          style={{ background: "linear-gradient(135deg,#065f46,#00d4a0)" }}
-        >
-          {loading ? "Analyzing…" : "💼 Analyze Portfolio"}
-        </button>
-        <button
-          className="btn btn-secondary"
-          onClick={() => setRaw(SAMPLE)}
-        >Try Sample</button>
-      </div>
-
-      {/* Loading */}
-      {loading && (
-        <div style={{ textAlign: "center", padding: 40 }}>
-          <div style={{ width: 36, height: 36, border: "3px solid #0f1e33",
-            borderTopColor: "#00d4a0", borderRadius: "50%",
-            animation: "spin 0.8s linear infinite", margin: "0 auto 16px" }} />
-          <div style={{ color: "#475569", fontFamily: "JetBrains Mono, monospace", fontSize: 13 }}>
-            Fetching live prices & signals…
+      {!data && (
+        <>
+          <div style={{ fontSize: 11, color: c("--text-muted"), marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            FORMAT: SYMBOL  QUANTITY  AVG_PRICE (one per line)
           </div>
+          <textarea value={raw} onChange={e => setRaw(e.target.value)} rows={6}
+            style={{ width: "100%", background: c("--bg-elevated"), border: `1px solid ${c("--border")}`, borderRadius: 12, color: c("--text-primary"), fontSize: 14, padding: 16, fontFamily: "Inter, sans-serif", lineHeight: 1.6, outline: "none", resize: "vertical", boxSizing: "border-box", marginBottom: 16 }}
+            onFocus={e => { e.target.style.borderColor = "#047857"; e.target.style.boxShadow = "0 0 0 3px rgba(4,120,87,0.1)"; }}
+            onBlur={e => { e.target.style.borderColor = c("--border"); e.target.style.boxShadow = "none"; }}
+          />
+          <div style={{ display: "flex", gap: 12, marginBottom: 32 }}>
+            <button onClick={analyze} disabled={!raw.trim() || loading}
+              style={{ padding: "12px 24px", borderRadius: 8, border: "none", background: raw.trim() && !loading ? "#047857" : "#e5e7eb", color: "#fff", fontSize: 14, fontWeight: 600, cursor: raw.trim() && !loading ? "pointer" : "not-allowed" }}>
+              {loading ? "Analyzing…" : <span style={{ display: "flex", alignItems: "center", gap: 7 }}><Icon d={ICONS.briefcase} size={15} stroke="#fff" />Analyze Portfolio</span>}
+            </button>
+            <button onClick={() => setRaw(SAMPLE)}
+              style={{ padding: "12px 24px", borderRadius: 8, border: `1px solid ${c("--border")}`, background: c("--bg-elevated"), color: c("--text-secondary"), fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", gap: 7 }}>
+              <Icon d={ICONS.sample} size={15} />Try Sample
+            </button>
+          </div>
+        </>
+      )}
+
+      {loading && (
+        <div style={{ textAlign: "center", padding: 60 }}>
+          <div style={{ width: 40, height: 40, border: "4px solid var(--border)", borderTopColor: "#047857", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 16px" }} />
+          <div style={{ color: c("--text-secondary"), fontSize: 14 }}>Fetching live prices & running AI diagnosis…</div>
         </div>
       )}
 
-      {/* Error */}
-      {error && (
-        <div style={{ padding: "14px 18px", background: "#1f0010",
-          border: "1px solid #ff446640", borderRadius: 10,
-          color: "#ff7a9a", fontSize: 13, fontFamily: "JetBrains Mono, monospace" }}>
-          ⚠️ {error}
-        </div>
-      )}
+      {error && <div style={{ padding: 16, background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 12, color: "#dc2626", fontSize: 14, marginBottom: 20, display: "flex", alignItems: "center", gap: 8 }}><Icon d={ICONS.warn} size={15} stroke="#dc2626" />{error}</div>}
 
-      {/* Results */}
-      {data && (
-        <div style={{ animation: "fadeUp 0.4s ease" }}>
-          {/* Summary cards */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 12, marginBottom: 24 }}>
+      {data && summary && (
+        <>
+          {/* ── Summary Cards ── */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 24 }}>
             {[
-              { label: "Total Invested", value: `₹${summary.total_invested?.toLocaleString("en-IN")}`, color: "#94a3b8" },
-              { label: "Current Value",  value: `₹${summary.total_current?.toLocaleString("en-IN")}`, color: "#e2e8f0" },
-              {
-                label: "Total P&L",
-                value: `${inProfit ? "+" : ""}₹${summary.total_pnl?.toLocaleString("en-IN")}`,
-                color: inProfit ? "#00d4a0" : "#ff4466",
-              },
-              {
-                label: "Return",
-                value: `${inProfit ? "+" : ""}${summary.total_pnl_pct}%`,
-                color: inProfit ? "#00d4a0" : "#ff4466",
-              },
-              { label: "Holdings", value: summary.count, color: "#3b82f6" },
-            ].map(s => (
-              <div key={s.label} style={{
-                padding: "16px", background: "#0a1220",
-                border: `1px solid ${s.color}25`, borderRadius: 10, textAlign: "center",
-              }}>
-                <div style={{ fontSize: 9.5, color: "#334155", marginBottom: 6,
-                  textTransform: "uppercase", letterSpacing: "0.08em", fontFamily: "JetBrains Mono, monospace" }}>
-                  {s.label}
+              { icon: ICONS.wallet,   label: "TOTAL INVESTED", val: `₹${summary.total_invested?.toLocaleString("en-IN")}`, sub: `Across ${summary.count} Securities`, subColor: c("--text-secondary") },
+              { icon: ICONS.trending, label: "CURRENT VALUE",  val: `₹${summary.total_current?.toLocaleString("en-IN")}`, sub: `${inProfit ? "↑ +" : "↓ "}₹${Math.abs(summary.total_pnl)?.toLocaleString("en-IN")}`, subColor: inProfit ? "#16a34a" : "#ef4444" },
+              { icon: ICONS.pnl,      label: "TOTAL P&L",      val: `${inProfit ? "+" : ""}₹${summary.total_pnl?.toLocaleString("en-IN")}`, valColor: inProfit ? "#16a34a" : "#ef4444", sub: "Since Inception", subColor: c("--text-secondary") },
+            ].map((s, i) => (
+              <div key={i} style={{ background: c("--bg-elevated"), borderRadius: 12, padding: 20, border: `1px solid ${c("--border")}` }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                  <Icon d={s.icon} size={16} stroke={c("--text-muted")} />
+                  <span style={{ fontSize: 11, color: c("--text-muted"), textTransform: "uppercase", letterSpacing: "0.05em" }}>{s.label}</span>
                 </div>
-                <div style={{ fontSize: 18, fontWeight: 700, color: s.color,
-                  fontFamily: "JetBrains Mono, monospace" }}>
-                  {s.value}
-                </div>
+                <div style={{ fontSize: 26, fontWeight: 700, color: s.valColor || c("--text-primary"), marginBottom: 4 }}>{s.val}</div>
+                <div style={{ fontSize: 12, color: s.subColor }}>{s.sub}</div>
               </div>
             ))}
+            <div style={{ background: "linear-gradient(135deg, #047857 0%, #059669 100%)", borderRadius: 12, padding: 20 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                <Icon d={ICONS.chart} size={16} stroke="#d1fae5" />
+                <span style={{ fontSize: 11, color: "#d1fae5", textTransform: "uppercase", letterSpacing: "0.05em" }}>RETURN</span>
+              </div>
+              <div style={{ fontSize: 32, fontWeight: 700, color: "#fff", marginBottom: 4 }}>{summary.total_pnl_pct}%</div>
+              <div style={{ fontSize: 12, color: "#d1fae5" }}>Overall portfolio return</div>
+            </div>
           </div>
 
-          {/* Holdings table */}
-          <div style={{ marginBottom: 8 }}>
-            <div style={{ fontSize: 11, color: "#475569", fontFamily: "JetBrains Mono, monospace",
-              letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 12 }}>
-              Holdings Breakdown
+          {/* ── Doctor: Health Score + Sector Allocation + Issues ── */}
+          {doctor && (
+            <>
+              <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 20, marginBottom: doctor.issues.length > 0 ? 0 : 24 }}>
+                {/* Score */}
+                <div style={{ background: c("--bg-elevated"), borderRadius: 16, border: `1px solid ${c("--border")}`, padding: 24, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: c("--text-primary"), marginBottom: 4, display: "flex", alignItems: "center", gap: 6 }}><Icon d={ICONS.health} size={15} />Health Score</div>
+                  <ScoreRing score={doctor.score} grade={doctor.grade} />
+                  {doctor.issues.length === 0 &&
+                    <div style={{ fontSize: 12, color: "#16a34a", textAlign: "center", display: "flex", alignItems: "center", gap: 5 }}><Icon d={ICONS.check} size={13} stroke="#16a34a" />No critical issues found</div>
+                  }
+                </div>
+
+                {/* Sector Allocation */}
+                <div style={{ background: c("--bg-elevated"), borderRadius: 16, border: `1px solid ${c("--border")}`, padding: 24 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: c("--text-primary"), marginBottom: 16 }}>Sector Allocation</div>
+                  {Object.entries(doctor.sector_allocation).sort((a, b) => b[1] - a[1]).map(([sector, pct], i) => {
+                    const colors = ["#047857", "#0369a1", "#7c3aed", "#ea580c", "#d97706", "#dc2626"];
+                    const col = colors[i % colors.length];
+                    return (
+                      <div key={sector} style={{ marginBottom: 12 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
+                          <span style={{ fontSize: 13, color: c("--text-primary") }}>{sector}</span>
+                          <span style={{ fontSize: 13, fontWeight: 600, color: col }}>{pct}%</span>
+                        </div>
+                        <div style={{ height: 6, background: c("--border"), borderRadius: 3, overflow: "hidden" }}>
+                          <div style={{ width: `${pct}%`, height: "100%", background: col, borderRadius: 3, transition: "width 0.8s ease" }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Issues below sector allocation */}
+              {doctor.issues.length > 0 && (
+                <div style={{ display: "grid", gridTemplateColumns: `220px 1fr`, gap: 20, marginBottom: 24 }}>
+                  <div />
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingTop: 12 }}>
+                    {doctor.issues.map((iss, i) => (
+                      <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "10px 14px", background: "rgba(239,68,68,0.06)", borderRadius: 10, borderLeft: "3px solid #dc2626" }}>
+                        <Icon d={ICONS.warn} size={14} stroke="#dc2626" />
+                        <span style={{ fontSize: 12, color: "#dc2626", lineHeight: 1.5 }}>{iss}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ── Holdings Table ── */}
+          <div style={{ background: c("--bg-elevated"), borderRadius: 12, border: `1px solid ${c("--border")}`, overflow: "hidden", marginBottom: 24 }}>
+            <div style={{ padding: "18px 24px", borderBottom: `1px solid ${c("--border")}` }}>
+              <h2 style={{ fontSize: 16, fontWeight: 600, color: c("--text-primary"), marginBottom: 2 }}>Portfolio Composition</h2>
+              <p style={{ fontSize: 13, color: c("--text-secondary") }}>Detailed breakdown with live prices & signals</p>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1.5fr 1.5fr 1.5fr 1fr", padding: "10px 24px", background: c("--bg-surface"), borderBottom: `1px solid ${c("--border")}` }}>
+              {["SYMBOL", "QTY", "AVG COST", "CURRENT PRICE", "P&L", "SIGNAL"].map(h => (
+                <div key={h} style={{ fontSize: 11, fontWeight: 600, color: c("--text-muted"), textTransform: "uppercase", letterSpacing: "0.05em" }}>{h}</div>
+              ))}
             </div>
             {data.holdings?.map((h, i) => {
               if (h.error) return (
-                <div key={i} style={{ padding: "12px 16px", background: "#1f0010",
-                  borderRadius: 10, marginBottom: 8,
-                  color: "#ff7a9a", fontSize: 12, fontFamily: "JetBrains Mono, monospace" }}>
-                  {h.symbol} — Error: {h.error}
+                <div key={i} style={{ padding: "14px 24px", borderBottom: i < data.holdings.length - 1 ? `1px solid ${c("--border")}` : "none", color: "#dc2626", fontSize: 13 }}>
+                  {h.symbol} — {h.error}
                 </div>
               );
               const pos = h.pnl >= 0;
+              const sigMap = {
+                accumulate: { bg: "rgba(34,197,94,0.12)", text: "#16a34a", label: "ACCUMULATE" },
+                hold:       { bg: "rgba(59,130,246,0.12)", text: "#2563eb", label: "HOLD" },
+                review:     { bg: "rgba(239,68,68,0.12)",  text: "#dc2626", label: "REVIEW" },
+              };
+              const sig = sigMap[h.signal] || sigMap.hold;
               return (
-                <div key={i} style={{
-                  padding: "16px 18px", background: "#080e1a",
-                  border: "1px solid #0f1e33", borderRadius: 12, marginBottom: 10,
-                  transition: "border-color 0.2s",
-                }}
-                  onMouseEnter={e => e.currentTarget.style.borderColor = "#1e3a66"}
-                  onMouseLeave={e => e.currentTarget.style.borderColor = "#0f1e33"}
-                >
-                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
-                    {/* Left */}
-                    <div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-                        <span style={{ fontSize: 15, fontWeight: 700, color: "#e2e8f0",
-                          fontFamily: "JetBrains Mono, monospace" }}>{h.symbol}</span>
-                        <span style={{
-                          fontSize: 10, padding: "2px 8px", borderRadius: 4,
-                          background: signalColor(h.signal) + "20",
-                          color: signalColor(h.signal),
-                          fontFamily: "JetBrains Mono, monospace",
-                          border: `1px solid ${signalColor(h.signal)}30`,
-                          textTransform: "uppercase",
-                        }}>{h.signal}</span>
-                        {h.weight_pct && (
-                          <span style={{ fontSize: 10, color: "#334155",
-                            fontFamily: "JetBrains Mono, monospace" }}>
-                            {h.weight_pct}% of portfolio
-                          </span>
-                        )}
-                      </div>
-                      <div style={{ fontSize: 11.5, color: "#475569", fontFamily: "JetBrains Mono, monospace" }}>
-                        {h.qty} × ₹{h.avg_cost} → ₹{h.current_price?.toLocaleString("en-IN")}
-                      </div>
-                      {h.signal_reason && (
-                        <div style={{ fontSize: 11, color: "#334155", marginTop: 5,
-                          fontFamily: "Inter, sans-serif", fontStyle: "italic" }}>
-                          {h.signal_reason}
-                        </div>
-                      )}
-                    </div>
-                    {/* Right */}
-                    <div style={{ textAlign: "right" }}>
-                      <div style={{ fontSize: 17, fontWeight: 700,
-                        color: pos ? "#00d4a0" : "#ff4466",
-                        fontFamily: "JetBrains Mono, monospace" }}>
-                        {pos ? "+" : ""}₹{h.pnl?.toLocaleString("en-IN")}
-                      </div>
-                      <div style={{ fontSize: 12, color: pos ? "#059669" : "#dc2626",
-                        fontFamily: "JetBrains Mono, monospace" }}>
-                        {pos ? "+" : ""}{h.pnl_pct}%
-                      </div>
-                    </div>
+                <div key={i} style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1.5fr 1.5fr 1.5fr 1fr", padding: "14px 24px", borderBottom: i < data.holdings.length - 1 ? `1px solid ${c("--border")}` : "none", alignItems: "center" }}>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: c("--text-primary"), marginBottom: 2 }}>{h.symbol}</div>
+                    {h.weight_pct && <div style={{ fontSize: 11, color: c("--text-muted") }}>{h.weight_pct}% of portfolio</div>}
                   </div>
-                  <PnlBar pct={h.pnl_pct} />
-                  {/* Indicators row */}
-                  <div style={{ display: "flex", gap: 14, marginTop: 10, flexWrap: "wrap" }}>
-                    {h.rsi != null && (
-                      <span style={{ fontSize: 10, color: h.rsi < 35 ? "#00d4a0" : h.rsi > 65 ? "#ff4466" : "#475569",
-                        fontFamily: "JetBrains Mono, monospace" }}>RSI {h.rsi?.toFixed(0)}</span>
-                    )}
-                    {h.ema20 != null && (
-                      <span style={{ fontSize: 10, color: "#2196f3", fontFamily: "JetBrains Mono, monospace" }}>
-                        EMA20 ₹{h.ema20?.toFixed(0)}
-                      </span>
-                    )}
-                    {h.suggested_sl != null && (
-                      <span style={{ fontSize: 10, color: "#f59e0b", fontFamily: "JetBrains Mono, monospace" }}>
-                        SL ₹{h.suggested_sl}
-                      </span>
-                    )}
+                  <div style={{ fontSize: 13, color: c("--text-primary") }}>{h.qty}</div>
+                  <div style={{ fontSize: 13, color: c("--text-primary") }}>₹{h.avg_cost?.toLocaleString("en-IN")}</div>
+                  <div style={{ fontSize: 13, color: c("--text-primary") }}>₹{h.current_price?.toLocaleString("en-IN")}</div>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: pos ? "#16a34a" : "#ef4444" }}>{pos ? "+" : ""}₹{h.pnl?.toLocaleString("en-IN")}</div>
+                    <div style={{ fontSize: 12, color: pos ? "#16a34a" : "#ef4444" }}>{pos ? "+" : ""}{h.pnl_pct}%</div>
+                  </div>
+                  <div>
+                    <span style={{ padding: "4px 10px", borderRadius: 6, background: sig.bg, color: sig.text, fontSize: 11, fontWeight: 600 }}>{sig.label}</span>
                   </div>
                 </div>
               );
             })}
           </div>
-        </div>
-      )}
 
+          {/* ── AI Advice + Action Items ── */}
+          {doctor && (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 24 }}>
+              <div style={{ background: "linear-gradient(135deg, #065f46 0%, #047857 100%)", borderRadius: 16, padding: 24 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: "#fff", marginBottom: 12, display: "flex", alignItems: "center", gap: 7 }}><Icon d={ICONS.robot} size={16} stroke="#fff" />AI Recommendations</div>
+                <div style={{ fontSize: 13, color: "#d1fae5", lineHeight: 1.8, whiteSpace: "pre-wrap" }}>{doctor.ai_advice}</div>
+              </div>
+              {doctor.suggestions.length > 0 && (
+                <div style={{ background: c("--bg-elevated"), borderRadius: 16, border: `1px solid ${c("--border")}`, padding: 24 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: c("--text-primary"), marginBottom: 14, display: "flex", alignItems: "center", gap: 7 }}><Icon d={ICONS.check} size={15} stroke="#047857" />Action Items</div>
+                  {doctor.suggestions.map((s, i) => (
+                    <div key={i} style={{ display: "flex", gap: 10, marginBottom: 12, padding: "10px 14px", background: "rgba(4,120,87,0.06)", borderRadius: 10, borderLeft: "3px solid #047857" }}>
+                      <span style={{ fontSize: 13, color: c("--text-primary"), lineHeight: 1.6 }}>{s}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          <button onClick={() => { setData(null); setDoctor(null); }}
+            style={{ padding: "10px 20px", borderRadius: 8, border: `1px solid ${c("--border")}`, background: c("--bg-elevated"), color: c("--text-secondary"), fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", gap: 7 }}>
+            <Icon d={ICONS.back} size={15} />Analyze Another Portfolio
+          </button>
+        </>
+      )}
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
