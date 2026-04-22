@@ -200,5 +200,7 @@ Open `http://localhost:5173`
 
 **Team Maharudra** — ET AI Hackathon 2026, PS6
 
+- **Akash Bhuyan** ([@AB-1817](https://github.com/AB-1817))
+- **Rushikesh Kedar** ([@Rushi9234](https://github.com/Rushi9234)) 
 ---
 
