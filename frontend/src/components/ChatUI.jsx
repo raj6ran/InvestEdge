@@ -1,9 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 
-const GROQ_KEY = import.meta.env.VITE_GROQ_KEY;
-const GROQ_API = "https://api.groq.com/openai/v1/chat/completions";
-const GROQ_MODEL = "llama-3.3-70b-versatile";
-const BACKEND = import.meta.env.VITE_API_URL || "https://investedge-api.onrender.com";
+import { BACKEND, GROQ_KEY, GROQ_API, GROQ_MODEL } from "../config.js";
 console.log("[ChatUI] API URL:", BACKEND);
 
 const TOOLS = [
