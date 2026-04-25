@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 
-import { BACKEND, GROQ_KEY, GROQ_API, GROQ_MODEL } from "../config.js";
+import { BACKEND } from "../config.js";
 console.log("[ChatUI] API URL:", BACKEND);
 
 const TOOLS = [
@@ -111,21 +111,14 @@ async function runAgent(messages, onText, onChart) {
   ];
 
   for (let turn = 0; turn < 6; turn++) {
-    const res = await fetch(GROQ_API, {
+    const res = await fetch(BACKEND + "/api/chat", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${GROQ_KEY}`,
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: GROQ_MODEL,
-        messages: history,
-        tools: TOOLS,
-        tool_choice: "auto",
-        max_tokens: 1500,
-        temperature: 0.3,
-      }),
-    });
+      messages: messages.filter(m => m.role !== "system"),
+      system: messages.find(m => m.role === "system")?.content || "You are a financial analyst AI.",
+    }),
+});
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
