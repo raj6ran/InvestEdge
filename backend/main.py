@@ -58,7 +58,10 @@ app = FastAPI(title="StockSense AI Backend", version="2.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "https://raj6ran.github.io",
+        "http://localhost:5173",
+    ],
     allow_methods=["*"],
     allow_headers=["*"],
 )
