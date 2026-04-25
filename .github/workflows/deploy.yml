@@ -30,7 +30,6 @@ jobs:
         run: npm run build
         working-directory: frontend
         env:
-          VITE_GROQ_KEY: ${{ secrets.VITE_GROQ_KEY }}
           VITE_API_URL: ${{ secrets.VITE_API_URL }}
           
       - name: Deploy to GitHub Pages
