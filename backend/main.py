@@ -1351,7 +1351,39 @@ async def news_rag(
 
 
 # ─── Health & Root ────────────────────────────────────────────────────────────
+# ─── Agent 0: Chat Proxy (keeps Groq key server-side) ────────────────────────
 
+class ChatReq(BaseModel):
+    messages: List[dict]
+    system: str = "You are a financial analyst AI assistant."
+
+@app.post("/api/chat")
+@limiter.limit("20/minute")
+async def chat_proxy(request: Request, req: ChatReq):
+    """Proxies Groq chat requests — keeps API key server-side."""
+    if not GROQ_KEYS:
+        raise HTTPException(503, "AI unavailable — API key not configured.")
+    global current_key_index
+    for attempt in range(len(GROQ_KEYS)):
+        try:
+            key = GROQ_KEYS[current_key_index]
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {key}"},
+                    json={
+                        "model": "llama-3.3-70b-versatile",
+                        "messages": [{"role": "system", "content": req.system}] + req.messages,
+                        "max_tokens": 1000,
+                        "temperature": 0.4,
+                    },
+                )
+                if resp.status_code == 200:
+                    return resp.json()
+                current_key_index = (current_key_index + 1) % len(GROQ_KEYS)
+        except Exception:
+            current_key_index = (current_key_index + 1) % len(GROQ_KEYS)
+    raise HTTPException(503, "AI service unavailable.")
 @app.get("/health")
 async def health():
     return {
