@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -105,7 +105,8 @@ class PatternReq(BaseModel):
     period: str = "6mo"
 
 @app.post("/api/patterns")
-async def detect_patterns(req: PatternReq):
+@limiter.limit("10/minute")
+async def detect_patterns(request: Request, req: PatternReq):
     ticker = nse(req.symbol)
     try:
         raw = yf.download(ticker, period=req.period, interval="1d",
@@ -668,7 +669,8 @@ class DoctorReq(BaseModel):
     holdings: List[Holding]
 
 @app.post("/api/portfolio/doctor")
-async def portfolio_doctor(req: DoctorReq):
+@limiter.limit("5/minute")
+async def portfolio_doctor(request: Request, req: DoctorReq):
     """Analyzes portfolio health: concentration, sector balance, risk, and AI recommendations."""
     results = []
     sector_map = {}
@@ -1026,7 +1028,8 @@ class SynthesisReq(BaseModel):
     query: str
 
 @app.post("/api/news/synthesize")
-async def synthesize_news(req: SynthesisReq):
+@limiter.limit("5/minute")
+async def synthesize_news(request: Request, req: SynthesisReq):
     query = req.query.strip()
     if not query:
         raise HTTPException(400, "Query cannot be empty")
