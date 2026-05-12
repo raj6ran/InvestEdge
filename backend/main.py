@@ -67,6 +67,7 @@ app.add_middleware(
     allow_origins=[
         "https://raj6ran.github.io",
         "http://localhost:5173",
+        "https://invest-edge-gilt.vercel.app",
     ],
     allow_methods=["*"],
     allow_headers=["*"],
